@@ -344,7 +344,7 @@ def get_filepath():
     return filedialog.askopenfilename()
 
 
-# not sure of the use
+
 
 
 def single_file_info(file_path):
