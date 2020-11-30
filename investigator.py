@@ -34,22 +34,25 @@ def main():
     # config.wf_API = configuration['wf_api_key']
 
     print("Investigator\nUsage: Enter one or more IP addresses or URLs to get information. To force an IP or a URL lookup enter the sub investigation menu by entering 'i' or 'u'")
-    while (1):
-        selection = input(
-            "Input or Select an investigation option. (i = ip, u = url) \n=> ")
-        if selection == 'i':
-            ip_search.ip_info()
-        elif selection == 'u':
-            url_search.url_info()
-        else:
-            if len(selection) != 0:
-                for item in selection.split(" "):
-                    if len(item) != 0:
-                        try:
-                            IPv4Address(item)
-                            ip_search.single_ip_info(item)
-                        except:
-                            url_search.single_url_info(item)
+    try:
+        while (1):
+            selection = input(
+                "Input or Select an investigation option. (i = ip, u = url) \n=> ")
+            if selection == 'i':
+                ip_search.ip_info()
+            elif selection == 'u':
+                url_search.url_info()
+            else:
+                if len(selection) != 0:
+                    for item in selection.split(" "):
+                        if len(item) != 0:
+                            try:
+                                IPv4Address(item)
+                                ip_search.single_ip_info(item)
+                            except:
+                                url_search.single_url_info(item)
+    except Exception as e:
+        print("Woops... General error:", e)
 
 
 if __name__ == "__main__":

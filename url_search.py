@@ -9,7 +9,7 @@ import time
 import sys
 import base64
 import os
-from xml.etree import ElementTree
+from lxml import etree
 from colorama import init, Fore, Back
 from config import vt_API, wf_API, ha_API,  http
 
@@ -33,9 +33,9 @@ def wf_url_scan(url):
         print("Error getting Palo Alto Wildfire results: ", e)
         return
     try:
-        # parser = ElementTree.XMLParser()
-        # tree = ElementTree.fromstring(resp.content, parser=parser)
-        tree = ElementTree.fromstring(resp.content)
+        parser = etree.XMLParser(recover=True)
+        tree = etree.fromstring(resp.content, parser=parser)
+        #tree = ElementTree.fromstring(resp.content)
         # verdict = int(tree[0][1].text)
         verdict = int(tree[0].find('verdict').text)
         # valid = str(tree[0][3].text)
@@ -297,17 +297,26 @@ def single_url_info(url):
     if not url or url == '':
         print("Blank URL")
         return
-
+    final_url = ''
     banner_size = os.get_terminal_size()[0]
     print(banner_size*'/', end='')
     print(banner_size*'‾', end='')
     print(Back.BLUE + "URL INFO FOR {}".format(url))
     print(banner_size*'_', end='')
-    final_url = vt_url_scan(url)
+    try:
+        final_url = vt_url_scan(url)
+    except Exception as e:
+        print("VT General Error:", e)
     print(banner_size*'_', end='')
-    ha_url_scan(url)
+    try:
+        ha_url_scan(url)
+    except Exception as e:
+        print("HA General Error:", e)
     print(banner_size*'_', end='')
-    wf_url_scan(url)
+    try:
+        wf_url_scan(url)
+    except Exception as e:
+        print("WF General Error:", e)
     print(banner_size*'_', end='')
     # urlscanio_scan(url)
     # print(banner_size*'_', end='')

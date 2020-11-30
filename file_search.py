@@ -38,20 +38,29 @@ def vt_filescan(subject):
     resp = requests.Response()
     try:
         resp = http.get(vt_API_URL, headers=headers, verify=False)
+    # except requests.exceptions.HTTPError as e:
+    # try:
+    #     resp = http.post("https://www.virustotal.com/api/v3/files",
+    #                      headers=headers, files={'file': subject}, verify=False)
+    #     print(resp.text)
+    #     id = resp.json().get('data').get('id')
+
+    #     resp = requests.get(vt_API_URL, headers=headers, verify=False)
+    #     while resp.status_code == 404:
+    #         time.sleep(2)
+    #         print("retrying")
+    #         resp = requests.get(
+    #             "http://www.virustotal.com/api/v3/files/{}/analyse".format(id), headers=headers, verify=False)
+    #         print(resp.text)
+
+    #     # print(resp.text)
+
     except requests.exceptions.HTTPError as e:
-        try:
-            resp = http.post("https://www.virustotal.com/api/v3/files",
-                             headers=headers, files={'file': subject}, verify=False)
-            print(resp.text)
-            while resp.status_code == 404:
-                print("retrying")
-                resp = requests.get(vt_API_URL, headers=headers, verify=False)
-
-            print(resp.text)
-
-        except requests.exceptions.HTTPError as e:
-            print("Error getting VirusTotal results:", e)
-            return
+        if e.response.status_code == 404:
+            print("Hash not in Virus Total")
+        else:
+            print("error checking with Virus Total: ", e)
+        return
 
     # print(json.dumps(resp.json(),indent = 4))
     vt_results = resp.json()['data']['attributes']
@@ -216,9 +225,10 @@ def ha_filescan(filename, subject):
     #     print("Error submitting file hash for search in Hybrid Analysis: " + e)
     resp = None
     try:
+        print("Uploading file to Hybrid Analysis")
         resp = http.post(HA_BASEURL + "quick-scan/file",
-                         headers=headers, files=files, verify=False, timeout=(10, 10))
-    except requests.exceptions.HTTPError as e:
+                         headers=headers, files=files, verify=False, timeout=60)
+    except requests.exceptions.Timeout as e:
         print("Error uploading to HA: ", e)
         return
 
@@ -258,14 +268,18 @@ def ha_filescan(filename, subject):
 
     for scanner in resp_json['scanners']:
         if scanner['name'] != "VirusTotal":
-            print("{} : {} ".format(
-                scanner['name'], scanner['status']))
+            print(scanner['name'])
+            if scanner['status'] == 'clean':
+                print(Fore.GREEN + "\t{} ".format(
+                    scanner['status']))
+            else:
+                print(Fore.RED + "\t{} ".format(
+                    scanner['status']))
 
     # first check hash
-    subject.seek(0)
 
 
-def wf_filescan(subject, filename):
+def wf_filescan(filename, subject):
     file_obj = (filename, subject)
 
     body_hash = {
@@ -315,11 +329,10 @@ def wf_filescan(subject, filename):
             resp = ElementTree.fromstring(http.post(
                 "https://wildfire.paloaltonetworks.com/publicapi/get/verdict", files=body_hash).content)
             verdict = int(resp[0][1].text)
-        # tree = ElementTree.fromstring(resp.content)
     elif verdict == -101:
         print("error")
 
-    print("WF verdict: ", end=' ')
+    print("WildFire verdict: \n\t", end=' ')
     if verdict == 0:
         print(Fore.GREEN + "benign")
     elif verdict == 1:
@@ -331,20 +344,38 @@ def wf_filescan(subject, filename):
     elif verdict == 5:
         print(Fore.RED + "C2")
     elif verdict == -101:
-        print(Fore.RED + "wildfire unspecified error")
+        print(Fore.YELLOW + "Wildfire unspecified error")
     elif verdict == -103:
-        print(Fore.RED + "invalid hash value")
-    subject.seek(0)
+        print(Fore.YELLOW + "Invalid hash (something is wrong this shouldn't happen)")
 
 
 def get_filepath():
-
     root = tk.Tk()
     root.withdraw()
     return filedialog.askopenfilename()
 
 
+def single_confidential_file_info(file_path):
+    banner_size = os.get_terminal_size()[0]
+    filename = file_path.split('/')[-1]
+    size = os.stat(file_path).st_size
+    try:
+        with open(file_path, 'rb') as subject:
+            print(banner_size*'/', end='')
+            print(banner_size*'‾', end='')
+            print(Back.BLUE + "(confidential) File INFO FOR {}".format(filename))
+            print(banner_size*'_', end='')
+            try:
+                wf_filescan(filename, subject)
+            except Exception as e:
+                print("General Error getting Wildfire results ", e)
+            subject.seek(0)
+            print(banner_size*'_', end='')
 
+            print(banner_size*'/', end='')
+    except OSError as e:
+        print("Couldn't open the file: ", e)
+    return
 
 
 def single_file_info(file_path):
@@ -361,18 +392,20 @@ def single_file_info(file_path):
             try:
                 vt_filescan(subject)
             except Exception as e:
-                print("General Error getting Virus Total results ", e.with_traceback)
-
+                print("General Error getting Virus Total results ", e)
+            subject.seek(0)
             print(banner_size*'_', end='')
             try:
                 ha_filescan(filename, subject)
             except Exception as e:
-                print("General Error getting Virus Total results ", e.with_traceback)
+                print("General Error getting Hybrid Analysis results ", e)
+            subject.seek(0)
             print(banner_size*'_', end='')
             try:
-                wf_filescan(subject, filename)
+                wf_filescan(filename, subject)
             except Exception as e:
-                print("General Error getting Virus Total results ", e.with_traceback)
+                print("General Error getting Wildfire results ", e)
+            subject.seek(0)
             print(banner_size*'_', end='')
 
             print(banner_size*'/', end='')
@@ -383,19 +416,28 @@ def single_file_info(file_path):
 
 
 def file_info():
-    print("File scanner tool: Scan file on VirusTotal, and Wildfire\nUsage: press enter to select a file.")
+    print("File scanner tool: Scan file on VirusTotal, and Wildfire\nUsage: press enter to select a file, use command 'c' to scan a confidential file")
     while(1):
-        search = None
-        while search == None:
-            search = input("File Scan (b to go back)\n=>")
-        if search == 'b':
-            return
-        else:
-            file_path = get_filepath()
-            if not file_path or file_path == '':
-                print("No file selected")
+        try:
+            search = None
+            while search == None:
+                search = input("File Scan (b to go back)\n=>")
+            if search == 'b':
+                return
+            if search == 'c':
+                file_path = get_filepath()
+                if not file_path or file_path == '':
+                    print("No file selected")
+                else:
+                    single_confidential_file_info(file_path)
             else:
-                single_file_info(file_path)
+                file_path = get_filepath()
+                if not file_path or file_path == '':
+                    print("No file selected")
+                else:
+                    single_file_info(file_path)
+        except Exception as e:
+            print("General error ", e)
 
 
 if __name__ == "__main__":
@@ -418,4 +460,4 @@ if __name__ == "__main__":
             file_info()
             run = False
         except Exception as e:
-            print("General error ", e.with_traceback)
+            print("General error ", e)
