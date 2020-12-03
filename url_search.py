@@ -112,8 +112,6 @@ def wf_url_scan(url):
 
 
 def vt_url_scan(url):
-    negCommunityScore = False
-    engine_detections = False
     url_id = url_id = base64.urlsafe_b64encode(
         url.encode()).decode().strip("=")
     vt_API_URL = "http://www.virustotal.com/api/v3/urls/{}".format(url_id)
@@ -145,24 +143,14 @@ def vt_url_scan(url):
     engine_results = vt_results['last_analysis_results']
     malicious_detections = stats['malicious']
     suspicious_detections = stats['suspicious']
-    # for stat in stats:
-    #     if (stat == "malicious" or stat == "suspicious"):
-    #         if int(stats[stat]) > 0:
-    #             engine_detections = True
-    #             print(Fore.RED + "{} : {}".format(stat, stats[stat]))
-    #         else:
-    #             print(Fore.GREEN + "{} : {}".format(stat, stats[stat]))
-    # else:
-    #         print("{} : {}".format(stat, stats[stat]))
 
-    # print engines that detected this IP
     if int(stats['malicious']) > 0 or int(stats['suspicious']) > 0:
         print(Fore.RED + "{} Detections".format(malicious_detections +
                                                 suspicious_detections))
         for engine in engine_results:
             if engine_results[engine]['result'] not in (None, "clean", "unrated"):
-                print("\t{} => {}:{}".format(
-                    engine, engine_results[engine]['result'], engine_results[engine]['category']))
+                print("\t{} => {}{}:{}".format(
+                    engine, Fore.RED, engine_results[engine]['result'], engine_results[engine]['category']))
     else:
         print(Fore.GREEN + "No detections")
 
@@ -222,7 +210,6 @@ def ha_url_scan(url):
         try:
             resp = http.get(
                 "https://www.hybrid-analysis.com/api/v2/quick-scan/"+id, headers=header, verify=False)
-            resp.raise_for_status()
         except requests.exceptions.HTTPError as e:
             print("Issue with Hybrid Analysis request ", e)
             print(resp.text)
@@ -230,17 +217,23 @@ def ha_url_scan(url):
         if resp.json()['finished']:
             print()
         # print(json.dumps(resp.json(), indent = 4))
-
     resp_json = resp.json()
 
-    reports = resp_json['reports']
-
-    for scanner in resp_json['scanners']:
-        if scanner['name'] != "VirusTotal":
-            print("{} : {} ".format(
-                scanner['name'], scanner['status']))
+    scanners = resp_json.get('scanners')
+    if scanners:
+        for scanner in scanners:
+            if scanner['name'] != "VirusTotal":
+                if scanner['status'] == "no-classification":
+                    print("{}{} : {} ".format(
+                        Fore.GREEN, scanner['name'], scanner['status']))
+                else:
+                    print("{}{} : {} ".format(
+                        Fore.YELLOW, scanner['name'], scanner['status']))()
+    else:
+        print("No external scanners scanned this URL")
 
     # get reports
+    reports = resp_json.get('reports')
     if len(reports):
         for i, report in enumerate(reports):
             try:
@@ -248,49 +241,28 @@ def ha_url_scan(url):
                     "https://www.hybrid-analysis.com/api/v2/report/{}/summary".format(report), headers=header, verify=False)
                 resp.raise_for_status()
                 ha_verdict = resp.json()['verdict']
+                if ha_verdict == 'no specific threat':
+                    print("Hybrid Analysis report {} verdict: {}{}".format(
+                        i+1, Fore.GREEN, ha_verdict))
+                    print("see more at https: // www.hybrid-analysis.com/sample/{}/{}".format(
+                        resp_json['sha256'], report))
+                elif ha_verdict == 'malicious':
+                    print("Hybrid Analysis report {} verdict: {}{}".format(
+                        i+1, Fore.RED, ha_verdict))
+                    print("see more at https: // www.hybrid-analysis.com/sample/{}/{}".format(
+                        resp_json['sha256'], report))
+                else:
+                    print("Hybrid Analysis report {} verdict: {}{}".format(
+                        i+1, Fore.YELLOW, ha_verdict))
+                    print("see more at https: // www.hybrid-analysis.com/sample/{}/{}".format(
+                        resp_json['sha256'], report))
 
-                print("Hybrid Analysis report {} verdict: {}\nsee more at https://www.hybrid-analysis.com/sample/{}/{}".format(
-                    i+1, ha_verdict, resp_json['sha256'], report))
             except requests.exceptions.HTTPError as e:
                 pass
 
     else:
         print("No reports for this URL")
     # print(json.dumps(resp.json(), indent = 4))
-
-
-# def urlscanio_scan(url):
-#     urlscan_link = "https://urlscan.io/api/v1/scan/"
-#     headers = {
-#         "Content-Type": "application/json",
-#         "API-Key": urlscan_API
-#     }
-
-#     data = {
-#         "url": url,
-#         "visibility": "public"
-#     }
-
-#     try:
-#         resp = requests.post("https://urlscan.io/api/v1/scan/",
-#                              headers=headers, data=json.dumps(data), verify=False)
-#         resp.raise_for_status()
-#     except requests.exceptions.HTTPError as e:
-#         print(e)
-#         return
-#     result = "https://urlscan.io/api/v1/scan/" + resp.json()['uuid']
-
-#     time.sleep(10)
-
-#     resp = requests.get(result, verify=False)
-#     print(json.dumps(resp.json(), indent=4))
-
-#     while resp.json()['status'] == 404:
-#         time.sleep(2)
-#         resp = requests.get(result, verify=False)
-#         print("checking")
-
-#     print(resp.json())
 
 
 def single_url_info(url):
@@ -310,6 +282,7 @@ def single_url_info(url):
     print(banner_size*'_', end='')
     try:
         ha_url_scan(url)
+
     except Exception as e:
         print("HA General Error:", e)
     print(banner_size*'_', end='')
@@ -332,8 +305,16 @@ def url_info():
         search = None
         while search == None:
             search = input("URL Search (b to go back)\n=>")
-        if search == 'b':
+        lower_search = search.lower()
+        if lower_search == 'b':
             return
+        elif lower_search == 'c':
+                if os.name == 'nt':
+                    os.system('cls')
+                else:
+                    os.system('clear')
+        elif lower_search == 'q':
+            exit(0)
         banner_size = os.get_terminal_size()[0]
         for url in search.split(' '):
             single_url_info(url)

@@ -16,6 +16,8 @@ def signal_handler(sig, frame):
     print("Quitting CTL+C interrupt")
     sys.exit(0)
 
+# general ip whois lookup to ip-api.com
+
 
 def get_ip_info(ip):
     try:
@@ -27,7 +29,9 @@ def get_ip_info(ip):
         print("Connection to ip-api.com timed out")
         return
     ipInfo = res.json()
-    if ipInfo['status'] == 'success':
+
+    # general who is info ouput
+    if ipInfo.get('status') == 'success':
         print(("Country: {}\n"
                "Region: {}\n"
                "Region Name: {}\n"
@@ -35,10 +39,18 @@ def get_ip_info(ip):
                "Post code: {}\n"
                "IP Range owner: {}\n"
                "IP Assignee: {}"
-               ).format(ipInfo['country'], ipInfo['region'], ipInfo['regionName'], ipInfo['city'], ipInfo['zip'], ipInfo['isp'], ipInfo['org']))
+               ).format(ipInfo['country'],
+                        ipInfo['region'],
+                        ipInfo['regionName'],
+                        ipInfo['city'],
+                        ipInfo['zip'],
+                        ipInfo['isp'],
+                        ipInfo['org']))
     else:
         print("Whois lookup did not return a result for this address.")
     return
+
+# virus total info for the supplied ip
 
 
 def vt_ip(ip):
@@ -108,6 +120,8 @@ def vt_ip(ip):
     vt_scan_link = "https://www.virustotal.com/gui/ip-address/{}".format(ip)
     print("See full scan results at {}".format(vt_scan_link))
 
+# print information for a single IP from all sources
+
 
 def single_ip_info(ip):
 
@@ -116,11 +130,19 @@ def single_ip_info(ip):
     print(banner_size*'‾', end='')
     print(Back.BLUE + "IP INFO FOR {}".format(ip))
     print(banner_size*'_', end='')
-    get_ip_info(ip)
+    try:
+        get_ip_info(ip)
+    except Exception as e:
+        print("Error whith WHOIS lookup: ", e)
     print(banner_size*'_', end='')
-    vt_ip(ip)
+    try:
+        vt_ip(ip)
+    except Exception as e:
+        print("Error getting Virus Total results: ", e)
     print(banner_size*'_', end='')
     print(banner_size*'/', end='')
+
+# ip menu not in use anymore, but allows input to be forcefully searched as an IP
 
 
 def ip_info():
@@ -136,35 +158,22 @@ def ip_info():
         for ip in search_ips.split():
             try:
                 ipaddress.IPv4Address(ip)
-
-                print(banner_size*'/', end='')
-                print(banner_size*'‾', end='')
-                print(Back.BLUE + "IP INFO FOR {}".format(ip))
-                print(banner_size*'_', end='')
-                get_ip_info(ip)
-                print(banner_size*'_', end='')
-                vt_ip(ip)
-                print(banner_size*'_', end='')
-                print(banner_size*'/', end='')
+                single_ip_info(ip)
             except ValueError as e:
-                print("Woops {} isn't a valid ipv4 address\n".format(ip))
+                print("{} isn't a valid ipv4 address\n".format(ip))
+
+            except Exception as e:
+                print("Error getting IP info: ", e)
 
 
+# standalone mode setup
 if __name__ == "__main__":
     urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
     # register the exit handler
     signal.signal(signal.SIGINT, signal_handler)
 
-    # import API keys from config file
-    # BASE_PATH = os.path.dirname(os.path.realpath(__file__))
-
     init(autoreset=True)
-
-#     os.path.exists('config.json')
-#     with open('config.json', 'rb') as f:
-#         configuration = json.load(f)
-#     vt_API = configuration['vt_api_key']
 
     # implement direct usage
     if len(sys.argv) > 1:

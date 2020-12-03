@@ -9,51 +9,32 @@ from tkinter.constants import TRUE
 from requests.sessions import Request
 import urllib3
 from tkinter import filedialog
-from xml.etree import ElementTree
+from lxml import etree
 from colorama import init, Fore, Back
 from config import vt_API, wf_API, ha_API, http
 
 import requests
 
-# import VxAPI-master
-
-# end usage plan (PUBLIC file scan):
-#   Enter function:
-#   f = upload file, u = submit download url, x = more info on previous scan
-# *confidential scan will be seperate if automated at all so as to prevent accidental cross usage
+# signal handler for running file search by itself
 
 
 def signal_handler(sig, frame):
     print("Quitting CTL+C interrupt")
     sys.exit(0)
 
+# run a virus total scan by searching for the hash of the file in VT
+# input: subject: file bytes
+
 
 def vt_filescan(subject):
+    # get hash and build request link/headers
     id = hashlib.sha256(subject.read()).hexdigest()
-    negCommunityScore = False
-    engine_detections = False
 
     vt_API_URL = "http://www.virustotal.com/api/v3/files/{}".format(id)
     headers = {'x-apikey': vt_API}
     resp = requests.Response()
     try:
         resp = http.get(vt_API_URL, headers=headers, verify=False)
-    # except requests.exceptions.HTTPError as e:
-    # try:
-    #     resp = http.post("https://www.virustotal.com/api/v3/files",
-    #                      headers=headers, files={'file': subject}, verify=False)
-    #     print(resp.text)
-    #     id = resp.json().get('data').get('id')
-
-    #     resp = requests.get(vt_API_URL, headers=headers, verify=False)
-    #     while resp.status_code == 404:
-    #         time.sleep(2)
-    #         print("retrying")
-    #         resp = requests.get(
-    #             "http://www.virustotal.com/api/v3/files/{}/analyse".format(id), headers=headers, verify=False)
-    #         print(resp.text)
-
-    #     # print(resp.text)
 
     except requests.exceptions.HTTPError as e:
         if e.response.status_code == 404:
@@ -73,10 +54,11 @@ def vt_filescan(subject):
     malicious_detections = stats['malicious']
     suspicious_detections = stats['suspicious']
 
-    # print engines that detected this IP
+    # if we got any malicious or suspicious detectons print engines that detected this IP
     if int(stats['malicious']) > 0 or int(stats['suspicious']) > 0:
         print(Fore.RED + "{} Detections".format(malicious_detections +
                                                 suspicious_detections))
+        # print each of the engine's results
         for engine in engine_results:
             if engine_results[engine]['result'] not in (None, "clean", "undetected"):
                 print("\t{} => {}:{}".format(
@@ -84,116 +66,31 @@ def vt_filescan(subject):
     else:
         print(Fore.GREEN + "No detections")
 
+    # Check for known file names in Virus Total
     names = vt_results.get('names')
     if names:
         print("Known filenames for this hash")
         for name in names:
             print("\t{}".format(name))
 
+    # print the reputation of the file
     vote_results = vt_results['reputation']
     if vote_results > 0:
         print(Fore.GREEN + "VT community score {}".format(vote_results))
     elif vote_results < 0:
-        print(Fore.RED + "VT community score {}".format(vote_results))
+        print(Fore.YELLOW + "VT community score {}".format(vote_results))
     else:
         print("VT community score: {}".format(vote_results))
 
-    # https cert info
     print("See full scan results at {}".format(vt_scan_link))
-    subject.seek(0)
 
-
-def vt_file_upload_scan(size, subject):
-
-    vt_BASE_URL = "http://www.virustotal.com/api/v3/"
-    vt_url_files = "files/"
-    headers = {'x-apikey': vt_API}
-
-    if size > 32e6:
-        print("big file")
-        try:
-            resp = http.get(
-                "http://www.virustotal.com/api/v3/files/upload_url", headers=headers)
-        except requests.exceptions.HTTPError as e:
-            print("Error getting upload url:", e)
-        vt_upload_url = resp.json()['data']
-    else:
-        vt_upload_url = "http://www.virustotal.com/api/v3/files"
-
-    files = {'file': subject}
-    try:
-        resp = requests.post(vt_upload_url, headers=headers, files=files)
-    except requests.exceptions.HTTPError as e:
-        print("Server error. File might be too large and blocked by the firewall.\n", e)
-        return
-
-    print(json.dumps(resp.json(), indent=4))
-    analysis_id = resp.json()['data']['id']
-    try:
-        resp = http.get(
-            vt_BASE_URL+"analyses/{}".format(analysis_id), headers=headers)
-    except requests.exceptions.HTTPError as e:
-        print("Error getting analysis: ", e)
-
-    # print(json.dumps(resp.json(), indent=4))
-    backoff = 0
-    if resp.json()['data']['attributes']['status'] == "queued" or resp.json()['data']['attributes']['status'] == "in-progress":
-        print("Waiting for response: ", end='')
-    while resp.json()['data']['attributes']['status'] == "queued" or resp.json()['data']['attributes']['status'] == "in-progress":
-        time.sleep(2**backoff)
-        print("|", end='')
-        if backoff < 4:
-            backoff += 1
-        # print(json.dumps(resp.json(), indent=4))
-
-        # print("in queue, waiting {} seconds to retry".format(2**backoff))
-        resp = requests.get(
-            vt_BASE_URL+"analyses/{}".format(analysis_id), headers=headers)
-    # print(json.dumps(resp.json(), indent=4))
-    print("VirusTotal results:")
-
-    vt_results = resp.json()['data']['attributes']
-    # vt_scan_link = "https://www.virustotal.com/gui/url/{}".format(url_id)
-
-    print("VirusTotal results:")
-    # check if any engines got a hit on this link and show them
-    stats = vt_results['last_analysis_stats']
-    engine_results = vt_results['last_analysis_results']
-    malicious_detections = stats['malicious']
-    suspicious_detections = stats['suspicious']
-
-    # print engines that detected this IP
-    if int(stats['malicious']) > 0 or int(stats['suspicious']) > 0:
-        print(Fore.RED + "{} Detections".format(malicious_detections +
-                                                suspicious_detections))
-        for engine in engine_results:
-            if engine_results[engine]['result'] not in (None, "clean", "unrated"):
-                print("\t{} => {}:{}".format(
-                    engine, engine_results[engine]['result'], engine_results[engine]['category']))
-    else:
-        print(Fore.GREEN + "No detections")
-
-    vote_results = vt_results['reputation']
-    if vote_results > 0:
-        print(Fore.GREEN + "VT community score {}".format(vote_results))
-    elif vote_results < 0:
-        print(Fore.RED + "VT community score {}".format(vote_results))
-    else:
-        print("VT community score: {}".format(vote_results))
-
-    # https cert info
-    print("See full scan results at {}".format(vt_scan_link))
-    #
-    # print(json.dumps(resp.json()['data']['attributes']['stats'], indent=4))
-    subject.seek(0)
+# run a HybridAnalysis filescan, this scan I actually upload the file, if > 100MB the upload will fail
 
 
 def ha_filescan(filename, subject):
 
-    # HA_BASEURL = "https://www.hybrid-analysis.com/api/v2/search/hash?_timestamp=1602689449862"
     HA_BASEURL = "https://www.hybrid-analysis.com/api/v2/"
-
-    headers = {
+    header = {
         'accept': 'application/json',
         'user-agent': 'Falcon Sandbox',
         'api-key': ha_API
@@ -202,46 +99,28 @@ def ha_filescan(filename, subject):
         'scan_type': (None, 'all'),
         'file': (filename, subject),
     }
-
-    # with open(file_path, 'rb') as subject:
-
-    # try:
-    #     resp = requests.post(HA_BASEURL+"search/hash", verify=False, headers=headers,
-    #                          data={'hash': hashlib.sha256(subject.read()).hexdigest()})
-    #     print(json.dumps(resp.json(), indent=4))
-
-    #     if resp.json()[0]['state'] == 'SUCCESS':
-    #         print(
-    #             "This file hasn't been seen before, uploading it to Hybrid Analysis")
-    #         data = {'file': subject,
-    #                 'environment_id': '120'
-    #                 }
-
-    #         resp = requests.post(HA_BASEURL + "submit/file",
-    #                              verify=False, headers=headers, data=data)
-    #         print(json.dumps(resp.json(), indent=4))
-
-    # except requests.exceptions.HTTPError as e:
-    #     print("Error submitting file hash for search in Hybrid Analysis: " + e)
+    # upload the file
     resp = None
     try:
         print("Uploading file to Hybrid Analysis")
         resp = http.post(HA_BASEURL + "quick-scan/file",
-                         headers=headers, files=files, verify=False, timeout=60)
+                         headers=header, files=files, verify=False, timeout=60)
     except requests.exceptions.Timeout as e:
-        print("Error uploading to HA: ", e)
+        print("Error uploading to Hybrid Analysis: connection timed out")
         return
 
     except requests.exceptions.HTTPError as e:
-        print("Issue with HA request ", e)
-        if resp:
-            print(resp.text)
-        return
+        try:
+            resp = http.post(
+                "https://www.hybrid-analysis.com/api/v2/search/hash", headers=header, data={'hash': hashlib.sha256(subject.read()).hexdigest()}, verify=False)
+            print("Couldn't upload the file (might be too large) checking hash instead")
+
+        except Exception as e:
+            print("Issue with HA request", e)
+            return
 
     id = resp.json()['id']
-    # print(json.dumps(resp.json(), indent = 4))
 
-    # time.sleep(5)
     delay = 10
     # keep checking in until the scan is complete
     if not resp.json()['finished']:
@@ -253,18 +132,18 @@ def ha_filescan(filename, subject):
         delay = 2
         try:
             resp = http.get(
-                "https://www.hybrid-analysis.com/api/v2/quick-scan/"+id, headers=headers, verify=False)
+                "https://www.hybrid-analysis.com/api/v2/quick-scan/"+id, header=header, verify=False)
         except requests.exceptions.HTTPError as e:
+
             print("Issue with Hybrid Analysis request ", e)
             print(resp.text)
             return
         if resp.json()['finished']:
             print()
-        # print(json.dumps(resp.json(), indent = 4))
+
+    # now go thorugh each of the scanners in the repsonse and print their results
 
     resp_json = resp.json()
-
-    reports = resp_json['reports']
 
     for scanner in resp_json['scanners']:
         if scanner['name'] != "VirusTotal":
@@ -272,10 +151,45 @@ def ha_filescan(filename, subject):
             if scanner['status'] == 'clean':
                 print(Fore.GREEN + "\t{} ".format(
                     scanner['status']))
-            else:
+            elif scanner['status'] == 'malicious':
                 print(Fore.RED + "\t{} ".format(
                     scanner['status']))
+            else:
+                print(Fore.YELLOW + "\t{} ".format(
+                    scanner['status']))
 
+    # Get any hybrid analysis reports for this and display their verdict along with a link to them
+    reports = resp_json.get('reports')
+
+    if len(reports):
+        for i, report in enumerate(reports):
+            try:
+                resp = http.get(
+                    "https://www.hybrid-analysis.com/api/v2/report/{}/summary".format(report), headers=header, verify=False)
+
+                ha_verdict = resp.json()['verdict']
+
+                if ha_verdict == 'no specific threat':
+                    print("Hybrid Analysis report {} verdict: {}{}".format(
+                        i+1, Fore.GREEN, ha_verdict))
+                    print("see more at https: // www.hybrid-analysis.com/sample/{}/{}".format(
+                        resp_json['sha256'], report))
+                elif ha_verdict == 'malicious':
+                    print("Hybrid Analysis report {} verdict: {}{}".format(
+                        i+1, Fore.RED, ha_verdict))
+                    print("see more at https: // www.hybrid-analysis.com/sample/{}/{}".format(
+                        resp_json['sha256'], report))
+                else:
+                    print("Hybrid Analysis report {} verdict: {}{}".format(
+                        i+1, Fore.YELLOW, ha_verdict))
+                    print("see more at https: // www.hybrid-analysis.com/sample/{}/{}".format(
+                        resp_json['sha256'], report))
+
+            except requests.exceptions.HTTPError as e:
+                pass
+
+    else:
+        print("No reports for this URL")
     # first check hash
 
 
@@ -290,11 +204,11 @@ def wf_filescan(filename, subject):
         resp = http.post(
             "https://wildfire.paloaltonetworks.com/publicapi/get/verdict", files=body_hash, verify=False)
 
-        tree = ElementTree.fromstring(resp.content)
+        tree = etree.fromstring(resp.content)
         # print(resp.text)
         verdict = int(tree[0].find('verdict').text)
     except requests.exceptions.HTTPError as e:
-        print("Error making wildfire request attempting upload: ", e)
+        print("Error searching in wildfire, attempting upload: ", e)
         verdict = -102
 
     if verdict == -102:
@@ -303,35 +217,43 @@ def wf_filescan(filename, subject):
             'file': (filename, subject)
         }
         print("This file doesn't exist in WildFire, uploading now. Please wait a few seconds for the verdict.")
+        # upload the file
         try:
-            resp = requests.post(
-                "https://wildfire.paloaltonetworks.com/publicapi/submit/file", files=body_file, verify=False)
+            resp = etree.fromstring(requests.post(
+                "https://wildfire.paloaltonetworks.com/publicapi/submit/file", files=body_file, verify=False).content)
+            print("Wildfire upload response\n", resp)
+            if resp.tag == 'error':
+                print("Wildfire file upload failed")
+                return
+
         except requests.exceptions.HTTPError as e:
             print("Error uploading the file to Wildfire: ", e)
-            print(resp.text)
             return
+        # wait a bit try and read the verdict
+        time.sleep(5)
         try:
-            resp = ElementTree.fromstring(http.post(
-                "https://wildfire.paloaltonetworks.com/publicapi/get/verdict", files=body_hash), verify=False.content)
+            resp = etree.fromstring(http.post(
+                "https://wildfire.paloaltonetworks.com/publicapi/get/verdict", files=body_hash, verify=False).content)
 
         except requests.exceptions.HTTPError as e:
             pass
-            #print("Error getting verdict from uploaded file: ", e)
+            # print("Error getting verdict from uploaded file: ", e)
         except requests.exceptions.ConnectTimeout as e:
             print("Timed out uploading the file to wildfire: "), e
             return
+        # keep trying to get the verdict, using backoff so as not to spam the server
         bckoff = 1
         while verdict == -100 or verdict == -102:
             print("Waiting for verdict")
             time.sleep(2**bckoff)
             bckoff += 1
-
-            resp = ElementTree.fromstring(http.post(
-                "https://wildfire.paloaltonetworks.com/publicapi/get/verdict", files=body_hash).content)
+            resp = etree.fromstring(http.post(
+                "https://wildfire.paloaltonetworks.com/publicapi/get/verdict", files=body_hash, verify=False).content)
             verdict = int(resp[0][1].text)
     elif verdict == -101:
-        print("error")
-
+        print("Wildfire intenal error")
+    print(resp)
+    # Get output, these are the result codes wildfire supplies.
     print("WildFire verdict: \n\t", end=' ')
     if verdict == 0:
         print(Fore.GREEN + "benign")
@@ -349,10 +271,13 @@ def wf_filescan(filename, subject):
         print(Fore.YELLOW + "Invalid hash (something is wrong this shouldn't happen)")
 
 
+# utility function to allow the user to select a file from the windows file explorer
 def get_filepath():
     root = tk.Tk()
     root.withdraw()
     return filedialog.askopenfilename()
+
+# search for a single file only using wildfire for confidential files
 
 
 def single_confidential_file_info(file_path):
@@ -376,6 +301,8 @@ def single_confidential_file_info(file_path):
     except OSError as e:
         print("Couldn't open the file: ", e)
     return
+
+# search for a file using all methods
 
 
 def single_file_info(file_path):
@@ -414,22 +341,35 @@ def single_file_info(file_path):
 
     return
 
+# this is the menu loop. we stay here until the user wants to go back to the general search.
+
 
 def file_info():
-    print("File scanner tool: Scan file on VirusTotal, and Wildfire\nUsage: press enter to select a file, use command 'c' to scan a confidential file")
+    print(("File scanner tool: Scan file on VirusTotal, and Wildfire\n"
+           "Please note the tools general limit file uploads to 100MB\n"
+           "Usage: press enter to select a file, use command 'x' to scan a confidential file"))
     while(1):
         try:
+            # get command input and check what to do with it
             search = None
             while search == None:
                 search = input("File Scan (b to go back)\n=>")
-            if search == 'b':
+            lower_search = search.lower()
+            if lower_search == 'b':
                 return
-            if search == 'c':
+            elif lower_search == 'c':
+                if os.name == 'nt':
+                    os.system('cls')
+                else:
+                    os.system('clear')
+            elif lower_search == 'x':
                 file_path = get_filepath()
                 if not file_path or file_path == '':
                     print("No file selected")
                 else:
                     single_confidential_file_info(file_path)
+            elif lower_search == 'q':
+                exit(0)
             else:
                 file_path = get_filepath()
                 if not file_path or file_path == '':
@@ -440,6 +380,7 @@ def file_info():
             print("General error ", e)
 
 
+# setup for running the file_search in standalone mode.
 if __name__ == "__main__":
     urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
@@ -448,10 +389,6 @@ if __name__ == "__main__":
     BASE_PATH = os.path.dirname(os.path.realpath(__file__))
 
     os.path.exists('config.json')
-    # with open('config.json', 'rb') as f:
-    #         configuration = json.load(f)
-    # vt_API = configuration['vt_api_key']
-    # wf_API = configuration['wf_api_key']
 
     signal.signal(signal.SIGINT, signal_handler)
     run = True
