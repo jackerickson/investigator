@@ -85,8 +85,6 @@ def vt_filescan(subject):
     print("See full scan results at {}".format(vt_scan_link))
 
 # run a HybridAnalysis filescan, this scan I actually upload the file, if > 100MB the upload will fail
-
-
 def ha_filescan(filename, subject):
 
     HA_BASEURL = "https://www.hybrid-analysis.com/api/v2/"
@@ -105,43 +103,38 @@ def ha_filescan(filename, subject):
         print("Uploading file to Hybrid Analysis")
         resp = http.post(HA_BASEURL + "quick-scan/file",
                          headers=header, files=files, verify=False, timeout=60)
+        id = resp.json().get('id')
+
+        delay = 10
+        # keep checking in until the scan is complete
+        if not resp.json()['finished']:
+            print("Waiting for Hybrid Analysis, please wait (retries):", end='')
+
+        while not resp.json()['finished']:
+            print('|', end='')
+            time.sleep(delay)
+            delay = 2
+            try:
+                resp = http.get(
+                    "https://www.hybrid-analysis.com/api/v2/quick-scan/"+id, headers=header, verify=False)
+            except requests.exceptions.HTTPError as e:
+
+                print("Issue with Hybrid Analysis request ", e)
+                print(resp.text)
+                return
+            if resp.json()['finished']:
+                print()
     except requests.exceptions.Timeout as e:
         print("Error uploading to Hybrid Analysis: connection timed out")
         return
 
     except requests.exceptions.HTTPError as e:
-        try:
-            resp = http.post(
-                "https://www.hybrid-analysis.com/api/v2/search/hash", headers=header, data={'hash': hashlib.sha256(subject.read()).hexdigest()}, verify=False)
-            print("Couldn't upload the file (might be too large) checking hash instead")
+        
+        print("Error uploading to HA, file might be too large (max 100MB)", e)
+        return
 
-        except Exception as e:
-            print("Issue with HA request", e)
-            return
 
-    id = resp.json()['id']
-
-    delay = 10
-    # keep checking in until the scan is complete
-    if not resp.json()['finished']:
-        print("Waiting for Hybrid Analysis, please wait (retries):", end='')
-
-    while not resp.json()['finished']:
-        print('|', end='')
-        time.sleep(delay)
-        delay = 2
-        try:
-            resp = http.get(
-                "https://www.hybrid-analysis.com/api/v2/quick-scan/"+id, header=header, verify=False)
-        except requests.exceptions.HTTPError as e:
-
-            print("Issue with Hybrid Analysis request ", e)
-            print(resp.text)
-            return
-        if resp.json()['finished']:
-            print()
-
-    # now go thorugh each of the scanners in the repsonse and print their results
+    # now go through each of the scanners in the repsonse and print their results
 
     resp_json = resp.json()
 
@@ -214,14 +207,14 @@ def wf_filescan(filename, subject):
     if verdict == -102:
         body_file = {
             'apikey': (None, wf_API),
-            'file': (filename, subject)
-        }
+            'file':subject
+            }
         print("This file doesn't exist in WildFire, uploading now. Please wait a few seconds for the verdict.")
         # upload the file
         try:
-            resp = etree.fromstring(requests.post(
-                "https://wildfire.paloaltonetworks.com/publicapi/submit/file", files=body_file, verify=False).content)
-            print("Wildfire upload response\n", resp)
+            resp = requests.post(
+                "https://wildfire.paloaltonetworks.com/publicapi/submit/file", files=body_file, verify=False)
+            resp = etree.fromstring(resp.content)
             if resp.tag == 'error':
                 print("Wildfire file upload failed")
                 return
@@ -363,6 +356,7 @@ def file_info():
                 else:
                     os.system('clear')
             elif lower_search == 'x':
+                print("CONFIDENTIAL SEARCH ONLY USING WILDFIRE")
                 file_path = get_filepath()
                 if not file_path or file_path == '':
                     print("No file selected")

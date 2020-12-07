@@ -48,7 +48,8 @@ def wf_url_scan(url):
     if valid == 'Yes':
         print("Wildfire Verdict: ", end=' ')
     else:
-        print("Invalid URL for Wildfire")
+        print("Wildfire: Submitted URL invalid")
+        return
     if verdict == -102:
         body = {
             'apikey': (None, wf_API),
