@@ -1,0 +1,4 @@
+lxml
+colorama
+requests
+pyinstaller

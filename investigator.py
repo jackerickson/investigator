@@ -3,18 +3,46 @@ import ip_search
 import url_search
 import file_search
 import urllib3
-import sys
 import signal
 import os
-import json
-import config
 from colorama import init
+
+helpmsg = """How to use the investigator:
+
+Commands (from anywhere):
+    q - quit
+    c - clear
+    b - back
+menu navigation commands (from home menu only)
+    u - forced URL submission menu
+    f - file search
+
+The application will, by default, parse your inputs and determine if it is an IP or a URL.
+If you would like to force a url search you can enter the url only search by submitting 'u'
+    Example submissions:
+        => 8.8.8.8 google.ca
+        => 8.8.8.8 8.8.4.4
+        => google.ca amazon.ca
+        => u
+from any menu press b to go back home
+
+File search can be done by entering the file search menu by submitting 'f'.
+In this menu you can either just press enter to select a file or submit 'x' to submit a confidential file which will only be checked against Palo Alto Wildfire
+
+All verdict outputs are colour coded based on determined severity. Green = clean result, red = maliciou result. If an output is Yellow, please double check the message to ensure the verdict is safe.
+
+If you would like to interrupt a search, press CTL+C from anywhere to return to the main menu.
+
+built by Jack :)
+"""
+
 # from config import configure, wf_API, vt_API
 
 # setup ctl+c to restart the application from scratch
 
 
 def signal_handler(sig, frame):
+    print()
     main()
 
 
@@ -36,7 +64,7 @@ def main():
             selection = input(
                 "Input or Select an investigation option. (enter h for help) \n=> ")
 
-            lower_selection = selection.lower()
+            lower_selection = selection.lower().strip(' ')
             if lower_selection == 'u':
                 url_search.url_info()
             elif lower_selection == 'q':
@@ -50,32 +78,7 @@ def main():
                     os.system('clear')
                 print("Investigator\nUsage: Enter one or more IP addresses or URLs to get information. Submit 'f' for file search or 'h' for additional info")
             elif lower_selection == 'h':
-                print("""How to use the investigator:
-
-Commands (from anywhere):
-    q - quit
-    c - clear
-    b - back
-menu navigation commands (from home menu only)
-    u - forced URL submission menu
-    f - file search
-
-The application will, by default, parse your inputs and determine if it is an IP or a URL.
-If you would like to force a url search you can enter the url only search by submtting 'u'
-    Example submissions:
-        => 8.8.8.8 google.ca
-        => 8.8.8.8 8.8.4.4
-        => google.ca amazon.ca
-        => u
-from any menu press b to go back home
-
-File search can be done by entering the file search menu by submitting 'f'.
-In this menu you can either just press enter to select a file or submit 'x' to submit a confidential file which will only be checked against Palo Alto Wildfire
-
-All verdict outputs are colour coded based on determined severity. Green = clean result, red = maliciou result. If an output is Yellow, please double check the message to ensure the verdict is safe.
-
-If you would like to interrupt a search, press CTL+C from anywhere to return to the main menu.
-                """)
+                print(helpmsg)
             # not a command so we split input by spaces for multi search, then we check if it's an IP, if not then search as a url
             else:
                 if len(selection) != 0:

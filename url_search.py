@@ -1,7 +1,6 @@
 from tkinter.constants import TRUE
 from xml.etree.ElementTree import ElementTree
 import requests
-import json
 from requests.api import head
 import urllib3
 import signal
@@ -33,16 +32,17 @@ def wf_url_scan(url):
         print("Error getting Palo Alto Wildfire results: ", e)
         return
     try:
+
+        # build a parser, need recovery because wildfire can return broken xml (i.e. if link contains http:// it doesn' escape the '/')
         parser = etree.XMLParser(recover=True)
         tree = etree.fromstring(resp.content, parser=parser)
-        #tree = ElementTree.fromstring(resp.content)
-        # verdict = int(tree[0][1].text)
+
+        # grab outputs from the response
         verdict = int(tree[0].find('verdict').text)
-        # valid = str(tree[0][3].text)
         valid = str(tree[0].find('valid').text)
+
     except Exception as e:
-        print("Please remove all '/' from your input to get wildfire verdict. current parser breaks", e)
-        # print(resp.text)
+        print("Error parsing response maybe you can decode it?:\n", resp.text)
         return
 
     if valid == 'Yes':
@@ -50,6 +50,7 @@ def wf_url_scan(url):
     else:
         print("Wildfire: Submitted URL invalid")
         return
+    # ret. code -102 means not found, prepare submission
     if verdict == -102:
         body = {
             'apikey': (None, wf_API),
@@ -61,9 +62,12 @@ def wf_url_scan(url):
                 "https://wildfire.paloaltonetworks.com/publicapi/submit/link", files=body)
 
         except requests.HTTPError as e:
-            print("Error submitting file to Wildfire: ", e)
+            print("Error submitting URL to Wildfire: ", e)
             return
+        # timout to give WF a chance to analyze
         time.sleep(2)
+
+        # request verdict again
         body = {
             'apikey': (None, wf_API),
             'url': (None, url)
@@ -79,6 +83,7 @@ def wf_url_scan(url):
 
     retry = 0
 
+    # keep retrying until we get an error code that's not 'error' or 'not found'
     while verdict == -100 or verdict == -102:
         if retry > 4:
             print(
@@ -170,7 +175,6 @@ def vt_url_scan(url):
 
 
 def ha_url_scan(url):
-    # url = "https://itunes.apple.com.register-appleid.services/"
 
     print("Hybrid analysis and other scanners\n")
 
@@ -190,7 +194,8 @@ def ha_url_scan(url):
         if e.response.status_code == 400:
             print("The supplied URL is invalid")
         else:
-            print("Issue with HA request (", e + ')')
+            print("Issue with HA request (", e, ')')
+            print(resp.text)
         # if resp:
         #     print(resp.text)
         return
@@ -202,9 +207,13 @@ def ha_url_scan(url):
     delay = 10
     # keep checking in until the scan is complete
     if not resp.json()['finished']:
-        print("Waiting for Hybrid Analysis, please wait (retries):", end='')
+        print("Waiting for Hybrid Analysis, please wait (~30 seconds):", end='')
+    # progress = 0 or progress = 100
 
-    while not resp.json()['finished']:
+    # This behaviour can be changed, reduce try count to decrease wait time, scan usually completes after 11 retries
+    # For faster searching we can display partial results and require user interaction to re-search and get them, otherwise make them wait
+    retry_count = 0
+    while not resp.json()['finished'] and retry_count < 12:
         print('|', end='')
         time.sleep(delay)
         delay = 2
@@ -218,18 +227,23 @@ def ha_url_scan(url):
         if resp.json()['finished']:
             print()
         # print(json.dumps(resp.json(), indent = 4))
+        retry_count += 1
     resp_json = resp.json()
 
     scanners = resp_json.get('scanners')
     if scanners:
         for scanner in scanners:
-            if scanner['name'] != "VirusTotal":
-                if scanner['status'] == "no-classification":
-                    print("{}{} : {} ".format(
-                        Fore.GREEN, scanner['name'], scanner['status']))
+            if scanner.get('name') != "VirusTotal":
+                if scanner.get('progress') != 100:
+                    print("{}: incomplete (status = {}), try searching again".format(
+                        Fore.YELLOW, scanner.get('name'), scanner.get('status')))
                 else:
-                    print("{}{} : {} ".format(
-                        Fore.YELLOW, scanner['name'], scanner['status']))()
+                    if scanner.get('status') == "no-classification":
+                        print("{}{} : {} ".format(
+                            Fore.GREEN, scanner.get('name'), scanner.get('status')))
+                    else:
+                        print("{}{} : {} ".format(
+                            Fore.YELLOW, scanner.get('name'), scanner.get('status')))
     else:
         print("No external scanners scanned this URL")
 
@@ -279,18 +293,17 @@ def single_url_info(url):
     try:
         final_url = vt_url_scan(url)
     except Exception as e:
-        print("VT General Error:", e)
-    print(banner_size*'_', end='')
-    try:
-        ha_url_scan(url)
-
-    except Exception as e:
-        print("HA General Error:", e)
+        print("VT Error:", e)
     print(banner_size*'_', end='')
     try:
         wf_url_scan(url)
     except Exception as e:
-        print("WF General Error:", e)
+        print("WF Error:", e)
+    print(banner_size*'_', end='')
+    try:
+        ha_url_scan(url)
+    except Exception as e:
+        print("HA Error:", e)
     print(banner_size*'_', end='')
     # urlscanio_scan(url)
     # print(banner_size*'_', end='')
@@ -310,10 +323,10 @@ def url_info():
         if lower_search == 'b':
             return
         elif lower_search == 'c':
-                if os.name == 'nt':
-                    os.system('cls')
-                else:
-                    os.system('clear')
+            if os.name == 'nt':
+                os.system('cls')
+            else:
+                os.system('clear')
         elif lower_search == 'q':
             exit(0)
         banner_size = os.get_terminal_size()[0]

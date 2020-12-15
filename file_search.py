@@ -1,5 +1,4 @@
 import hashlib
-import json
 import os
 import sys
 import time
@@ -9,7 +8,7 @@ from tkinter.constants import TRUE
 from requests.sessions import Request
 import urllib3
 from tkinter import filedialog
-from lxml import etree
+from lxml import etree, html
 from colorama import init, Fore, Back
 from config import vt_API, wf_API, ha_API, http
 
@@ -33,6 +32,8 @@ def vt_filescan(subject):
     vt_API_URL = "http://www.virustotal.com/api/v3/files/{}".format(id)
     headers = {'x-apikey': vt_API}
     resp = requests.Response()
+
+    # make the request
     try:
         resp = http.get(vt_API_URL, headers=headers, verify=False)
 
@@ -85,6 +86,8 @@ def vt_filescan(subject):
     print("See full scan results at {}".format(vt_scan_link))
 
 # run a HybridAnalysis filescan, this scan I actually upload the file, if > 100MB the upload will fail
+
+
 def ha_filescan(filename, subject):
 
     HA_BASEURL = "https://www.hybrid-analysis.com/api/v2/"
@@ -129,10 +132,9 @@ def ha_filescan(filename, subject):
         return
 
     except requests.exceptions.HTTPError as e:
-        
+
         print("Error uploading to HA, file might be too large (max 100MB)", e)
         return
-
 
     # now go through each of the scanners in the repsonse and print their results
 
@@ -182,7 +184,7 @@ def ha_filescan(filename, subject):
                 pass
 
     else:
-        print("No reports for this URL")
+        print("No reports for this File")
     # first check hash
 
 
@@ -207,16 +209,24 @@ def wf_filescan(filename, subject):
     if verdict == -102:
         body_file = {
             'apikey': (None, wf_API),
-            'file':subject
-            }
+            'file': (filename, subject)
+        }
         print("This file doesn't exist in WildFire, uploading now. Please wait a few seconds for the verdict.")
         # upload the file
         try:
-            resp = requests.post(
-                "https://wildfire.paloaltonetworks.com/publicapi/submit/file", files=body_file, verify=False)
+
+            payload = {'apikey': '52fd6379ee726fdd870b006985d235a5'}
+
+            subject.seek(0)
+            files = [
+                ('file', (filename, subject))
+            ]
+            headers = {}
+            resp = requests.request(
+                "POST", "https://wildfire.paloaltonetworks.com/publicapi/submit/file", headers=headers, data=payload, files=files)
             resp = etree.fromstring(resp.content)
             if resp.tag == 'error':
-                print("Wildfire file upload failed")
+                print("Wildfire file upload failed: Filetype Unsupported")
                 return
 
         except requests.exceptions.HTTPError as e:
@@ -235,17 +245,26 @@ def wf_filescan(filename, subject):
             print("Timed out uploading the file to wildfire: "), e
             return
         # keep trying to get the verdict, using backoff so as not to spam the server
-        bckoff = 1
-        while verdict == -100 or verdict == -102:
-            print("Waiting for verdict")
-            time.sleep(2**bckoff)
-            bckoff += 1
-            resp = etree.fromstring(http.post(
-                "https://wildfire.paloaltonetworks.com/publicapi/get/verdict", files=body_hash, verify=False).content)
-            verdict = int(resp[0][1].text)
+        retry = 0
+        # give it 5s initially
+        time.sleep(5)
+        if verdict == -100 or verdict == -102:
+            print("Waiting for verdict: ", end='')
+            # try scanning a few times (don't stall too long, user can re scan later and get results without being forced to wait here)
+            while retry <= 5 and (verdict == -100 or verdict == -102):
+                time.sleep(5)
+                print('|', end='')
+                retry += 1
+                resp = etree.fromstring(http.post(
+                    "https://wildfire.paloaltonetworks.com/publicapi/get/verdict", files=body_hash, verify=False).content)
+                verdict = int(resp[0][1].text)
+            print()
+            if verdict == -100 or verdict == -102:
+                print(
+                    "The File is taking a while to scan; please rescan this file in a few minutes for the results.")
+
     elif verdict == -101:
         print("Wildfire intenal error")
-    print(resp)
     # Get output, these are the result codes wildfire supplies.
     print("WildFire verdict: \n\t", end=' ')
     if verdict == 0:
@@ -312,19 +331,19 @@ def single_file_info(file_path):
             try:
                 vt_filescan(subject)
             except Exception as e:
-                print("General Error getting Virus Total results ", e)
-            subject.seek(0)
-            print(banner_size*'_', end='')
-            try:
-                ha_filescan(filename, subject)
-            except Exception as e:
-                print("General Error getting Hybrid Analysis results ", e)
+                print("Error getting Virus Total results ", e)
             subject.seek(0)
             print(banner_size*'_', end='')
             try:
                 wf_filescan(filename, subject)
             except Exception as e:
-                print("General Error getting Wildfire results ", e)
+                print("Error getting Wildfire results ", e)
+            subject.seek(0)
+            print(banner_size*'_', end='')
+            try:
+                ha_filescan(filename, subject)
+            except Exception as e:
+                print("Error getting Hybrid Analysis results ", e)
             subject.seek(0)
             print(banner_size*'_', end='')
 
@@ -341,6 +360,7 @@ def file_info():
     print(("File scanner tool: Scan file on VirusTotal, and Wildfire\n"
            "Please note the tools general limit file uploads to 100MB\n"
            "Usage: press enter to select a file, use command 'x' to scan a confidential file"))
+    file_path = ''
     while(1):
         try:
             # get command input and check what to do with it
@@ -355,6 +375,12 @@ def file_info():
                     os.system('cls')
                 else:
                     os.system('clear')
+            elif lower_search == 'r':
+                print("Rescanning: {}".format(file_path.split('/')[-1]))
+                if not file_path or file_path == '':
+                    print("No file selected")
+                else:
+                    single_file_info(file_path)
             elif lower_search == 'x':
                 print("CONFIDENTIAL SEARCH ONLY USING WILDFIRE")
                 file_path = get_filepath()

@@ -1,6 +1,5 @@
 import sys
 import requests
-import json
 import signal
 import os
 import urllib3
@@ -9,7 +8,7 @@ import ipaddress
 from datetime import datetime
 
 
-from config import vt_API, wf_API, http
+from config import vt_API, http
 
 
 def signal_handler(sig, frame):
@@ -30,7 +29,7 @@ def get_ip_info(ip):
         return
     ipInfo = res.json()
 
-    # general who is info ouput
+    # general who is info output
     if ipInfo.get('status') == 'success':
         print(("Country: {}\n"
                "Region: {}\n"
