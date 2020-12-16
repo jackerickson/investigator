@@ -41,23 +41,8 @@ built by Jack :)
 # setup ctl+c to restart the application from scratch
 
 
-def signal_handler(sig, frame):
-    print()
-    main()
-
-
 def main():
 
-    # disable https warnings to prevent scaring users, due to internal self signed certs need to disable ssl verification
-    urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
-
-    # register signal handler for ctl+c
-    signal.signal(signal.SIGINT, signal_handler)
-
-    # init colorama (used for text colouring)
-    init(autoreset=True)
-
-    BASE_PATH = os.path.dirname(os.path.realpath(__file__))
     # main program loop. Here is where we make the selection for everything
     while (1):
         try:
@@ -89,11 +74,24 @@ def main():
                                 ip_search.single_ip_info(item)
                             except:
                                 url_search.single_url_info(item)
+        # handle interrupt with ctl+c, simply restart the loop
+        except KeyboardInterrupt:
+            print('')
+            pass
         except Exception as e:
-            print("Woops... General uncaught error:", e)
+            print("Woops... General error:", e)
+            return
 
 
 if __name__ == "__main__":
-    print("Investigator\nUsage: Enter one or more IP addresses or URLs to get information. Submit 'f' for file search or 'h' for additional info")
 
-    main()
+    # disable https warnings to prevent scaring users, due to internal self signed certs need to disable ssl verification
+    urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+
+    # init colorama (used for text colouring)
+    init(autoreset=True)
+
+    BASE_PATH = os.path.dirname(os.path.realpath(__file__))
+    print("Investigator\nUsage: Enter one or more IP addresses or URLs to get information. Submit 'f' for file search or 'h' for additional info")
+    while(1):
+        main()

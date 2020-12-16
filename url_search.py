@@ -315,23 +315,29 @@ def single_url_info(url):
 
 def url_info():
     print("URL scanner tool: Search URL on VirusTotal, and Wildfire\nUsage: enter one or more URLs seperate by spaces.")
-    while(1):
-        search = None
-        while search == None:
-            search = input("URL Search (b to go back)\n=>")
-        lower_search = search.lower()
-        if lower_search == 'b':
-            return
-        elif lower_search == 'c':
-            if os.name == 'nt':
-                os.system('cls')
-            else:
-                os.system('clear')
-        elif lower_search == 'q':
-            exit(0)
-        banner_size = os.get_terminal_size()[0]
-        for url in search.split(' '):
-            single_url_info(url)
+    try:
+        while(1):
+            search = None
+            while search == None:
+                search = input("URL Search (b to go back)\n=>")
+            lower_search = search.lower()
+            if lower_search == 'b':
+                return
+            elif lower_search == 'c':
+                if os.name == 'nt':
+                    os.system('cls')
+                else:
+                    os.system('clear')
+            elif lower_search == 'q':
+                exit(0)
+            banner_size = os.get_terminal_size()[0]
+            for url in search.split(' '):
+                single_url_info(url)
+    except KeyboardInterrupt:
+        print('')
+        pass
+    except Exception as e:
+        print("Uncaught error: ", e)
 
 
 if __name__ == "__main__":

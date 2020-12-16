@@ -188,7 +188,7 @@ def ha_filescan(filename, subject):
     # first check hash
 
 
-def wf_filescan(filename, subject):
+def wf_filescan(filename, subject, size):
     file_obj = (filename, subject)
 
     body_hash = {
@@ -211,7 +211,10 @@ def wf_filescan(filename, subject):
             'apikey': (None, wf_API),
             'file': (filename, subject)
         }
-        print("This file doesn't exist in WildFire, uploading now. Please wait a few seconds for the verdict.")
+        print("This file doesn't exist in WildFire, uploading now.")
+        if size > (100 * 10**6):
+            print("File too large to upload to Wildfire (Max 100MB)")
+            return
         # upload the file
         try:
 
@@ -303,7 +306,7 @@ def single_confidential_file_info(file_path):
             print(Back.BLUE + "(confidential) File INFO FOR {}".format(filename))
             print(banner_size*'_', end='')
             try:
-                wf_filescan(filename, subject)
+                wf_filescan(filename, subject, size)
             except Exception as e:
                 print("General Error getting Wildfire results ", e)
             subject.seek(0)
@@ -335,16 +338,19 @@ def single_file_info(file_path):
             subject.seek(0)
             print(banner_size*'_', end='')
             try:
-                wf_filescan(filename, subject)
+                wf_filescan(filename, subject, size)
             except Exception as e:
                 print("Error getting Wildfire results ", e)
             subject.seek(0)
             print(banner_size*'_', end='')
-            try:
-                ha_filescan(filename, subject)
-            except Exception as e:
-                print("Error getting Hybrid Analysis results ", e)
-            subject.seek(0)
+            if size > (100 * 10**6):
+                print("File is too large to upload to Hybrid Analysis (Max = 100MB)")
+            else:
+                try:
+                    ha_filescan(filename, subject)
+                except Exception as e:
+                    print("Error getting Hybrid Analysis results ", e)
+                subject.seek(0)
             print(banner_size*'_', end='')
 
             print(banner_size*'/', end='')
@@ -396,6 +402,10 @@ def file_info():
                     print("No file selected")
                 else:
                     single_file_info(file_path)
+
+        except KeyboardInterrupt:
+            print('')
+            pass
         except Exception as e:
             print("General error ", e)
 
@@ -409,12 +419,4 @@ if __name__ == "__main__":
     BASE_PATH = os.path.dirname(os.path.realpath(__file__))
 
     os.path.exists('config.json')
-
-    signal.signal(signal.SIGINT, signal_handler)
-    run = True
-    while run:
-        try:
-            file_info()
-            run = False
-        except Exception as e:
-            print("General error ", e)
+    file_info()

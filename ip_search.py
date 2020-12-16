@@ -6,14 +6,7 @@ import urllib3
 from colorama import Fore, Back, init
 import ipaddress
 from datetime import datetime
-
-
 from config import vt_API, http
-
-
-def signal_handler(sig, frame):
-    print("Quitting CTL+C interrupt")
-    sys.exit(0)
 
 # general ip whois lookup to ip-api.com
 
@@ -146,31 +139,34 @@ def single_ip_info(ip):
 
 def ip_info():
     print("IP scanner tool: Whois, VirusTotal scan, and reverse DNS lookup\nUsage: enter one or more IPs seperate by spaces.")
-    while(True):
-        search_ips = ""
-        while not search_ips:
-            search_ips = input("IP Lookup (b to go back)\n=> ")
-        if search_ips == 'b':
-            return
-        # just some funky formatting. Not required.
-        banner_size = os.get_terminal_size()[0]
-        for ip in search_ips.split():
-            try:
-                ipaddress.IPv4Address(ip)
-                single_ip_info(ip)
-            except ValueError as e:
-                print("{} isn't a valid ipv4 address\n".format(ip))
+    try:
+        while(True):
+            search_ips = ""
+            while not search_ips:
+                search_ips = input("IP Lookup (b to go back)\n=> ")
+            if search_ips == 'b':
+                return
+            # just some funky formatting. Not required.
+            banner_size = os.get_terminal_size()[0]
+            for ip in search_ips.split():
+                try:
+                    ipaddress.IPv4Address(ip)
+                    single_ip_info(ip)
+                except ValueError as e:
+                    print("{} isn't a valid ipv4 address\n".format(ip))
 
-            except Exception as e:
-                print("Error getting IP info: ", e)
+                except Exception as e:
+                    print("Error getting IP info: ", e)
+    except KeyboardInterrupt:
+        print('')
+        pass
+    except Exception as e:
+        print("Uncaught error: ", e)
 
 
 # standalone mode setup
 if __name__ == "__main__":
     urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
-
-    # register the exit handler
-    signal.signal(signal.SIGINT, signal_handler)
 
     init(autoreset=True)
 
