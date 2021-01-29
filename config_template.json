@@ -1,0 +1,6 @@
+{
+	"vt_api_key": "vt_api_key",
+	"ha_api_key": "Hybrid analysis API keyu",
+	"wf_api_key": "Wildfire API key",
+	"__comment__": "add your keys above and change the filename to config.json to use custom keys"
+}
