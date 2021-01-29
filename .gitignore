@@ -4,3 +4,4 @@ dist/*
 build/*
 investigator.spec
 test.py
+config.json
